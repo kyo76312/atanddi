@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>公文欄位擷取工具（AT / DI）</title>
+<style>
+  body {
+    font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  pre {
+    background: #f5f5f5;
+    padding: 12px;
+    white-space: pre-wrap;
+    border: 1px solid #ccc;
+  }
+</style>
+</head>
+<body>
+
+<h2>公文欄位擷取工具  有bug請打113告知</h2>
+<h2>上傳 .at 或 .di 公文檔案</h2>
+<input type="file" id="fileInput" accept=".at,.di,.xml" />
+
+<h2>擷取結果</h2>
+<pre id="output">尚未載入檔案</pre>
+
+<script>
+document.getElementById("fileInput").addEventListener("change", function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      parseDocument(e.target.result);
+    } catch (err) {
+      document.getElementById("output").textContent =
+        "解析失敗，可能不是有效的公文檔案";
+    }
+  };
+  reader.readAsText(file, "utf-8");
+});
+
+function parseDocument(text) {
+  const parser = new DOMParser();
+  let xmlDoc = parser.parseFromString(text, "text/xml");
+
+  // AT 檔：抽出內嵌 DI
+  const diNode = xmlDoc.querySelector("DI");
+  if (diNode) {
+    const innerXML = diNode.textContent
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+    xmlDoc = parser.parseFromString(innerXML, "text/xml");
+  }
+
+  let result = "";
+
+  // 類型
+  const typeNode = xmlDoc.querySelector("類別");
+  if (typeNode) result += "類型：" + typeNode.textContent.trim() + "\n";
+
+  // 受文者
+  const receiver = xmlDoc.querySelector("受文者 文字, 受文者");
+  if (receiver) result += "受文者：" + receiver.textContent.trim() + "\n";
+
+  // 發文日期
+  const dateNode = xmlDoc.querySelector("發文日期 年月日");
+  if (dateNode) result += "發文日期：" + dateNode.textContent.trim() + "\n";
+
+  // 發文字號
+  const noNode = xmlDoc.querySelector("發文字號");
+  if (noNode) result += "發文字號：" + noNode.textContent.trim() + "\n";
+
+  // 附件
+  const attachNode = xmlDoc.querySelector("附件 文字");
+  if (attachNode) result += "附件：" + attachNode.textContent.trim() + "\n";
+
+  // 主旨
+  const subjectNode = xmlDoc.querySelector("主旨 > 文字");
+  if (subjectNode) {
+    result += "\n主旨：\n" + subjectNode.textContent.trim() + "\n";
+  }
+
+  // 說明
+  const explainNode = xmlDoc.querySelector('段落[段名="說明："]');
+  if (explainNode) {
+    result += "\n說明：\n";
+    const items = explainNode.querySelectorAll("條列 > 文字");
+    if (items.length > 0) {
+      items.forEach((item, i) => {
+        result += (i + 1) + ". " + item.textContent.trim() + "\n";
+      });
+    } else {
+      const textNode = explainNode.querySelector("文字");
+      if (textNode) result += textNode.textContent.trim() + "\n";
+    }
+  }
+
+  // 擬辦
+  const planNode = xmlDoc.querySelector('段落[段名="擬辦："] > 文字');
+  if (planNode) {
+    result += "\n擬辦：\n" + planNode.textContent.trim() + "\n";
+  }
+
+  // 會辦單位
+  const coopNode = xmlDoc.querySelector("會辦單位");
+  if (coopNode) result += "\n會辦單位：" + coopNode.textContent.trim() + "\n";
+
+  //  正本（修正）
+  const mainNodes = xmlDoc.querySelectorAll("正本 全銜");
+  if (mainNodes.length > 0) {
+    result += "\n正本：\n";
+    mainNodes.forEach((node, i) => {
+      result += (i + 1) + ". " + node.textContent.trim() + "\n";
+    });
+  }
+
+  //  副本（修正）
+  const copyNodes = xmlDoc.querySelectorAll("副本 全銜");
+  if (copyNodes.length > 0) {
+    result += "\n副本：\n";
+    copyNodes.forEach((node, i) => {
+      result += (i + 1) + ". " + node.textContent.trim() + "\n";
+    });
+  }
+
+  // 決行層級
+  const levelNode = xmlDoc.querySelector("決行層級值");
+  if (levelNode) {
+    result += "\n決行層級：" + levelNode.textContent.trim() + "\n";
+  }
+
+  document.getElementById("output").textContent =
+    result.trim() || "未擷取到指定欄位";
+}
+</script>
+
+</body>
+</html>
