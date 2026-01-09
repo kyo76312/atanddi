@@ -17,12 +17,18 @@
 </head>
 <body>
 
-<h2>舊版公文讀取工具 <br>
-目前僅支援簽&稿<br>
-不支援一個檔案中包含多個簽或稿<br>
-  有其他問題請打113告知</h2>
-<h2>選擇 .at 或 .di 公文檔案<br>
-本網頁不會上傳任何文件，所有讀取與處理動作皆在您的裝置本機執行。</h2>
+<h2>
+  舊版公文讀取工具 <br>
+  目前僅支援簽&稿<br>
+  不支援一個檔案中包含多個簽或稿<br>
+  有其他問題請打113告知
+</h2>
+
+<h2>
+  選擇 .at 或 .di 公文檔案<br>
+  本網頁不會上傳任何文件，所有讀取與處理動作皆在您的裝置本機執行。
+</h2>
+
 <input type="file" id="fileInput" accept=".at,.di,.xml" />
 
 <h2>擷取結果</h2>
@@ -47,48 +53,48 @@ document.getElementById("fileInput").addEventListener("change", function () {
 
 function parseDocument(text) {
   const parser = new DOMParser();
-  let xmlDoc = parser.parseFromString(text, "text/xml");
 
-  // AT 檔：抽出內嵌 DI
-  const diNode = xmlDoc.querySelector("DI");
-  if (diNode) {
+  // 保留原始 AT / DI 文件
+  const atDoc = parser.parseFromString(text, "text/xml");
+
+  // 內文文件（預設為自己）
+  let contentDoc = atDoc;
+
+  // 若為 AT，抽出 DI（但不覆蓋 atDoc）
+  const diNode = atDoc.querySelector("Draft > DI");
+  if (diNode && diNode.textContent.trim()) {
     const innerXML = diNode.textContent
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&amp;/g, "&");
-    xmlDoc = parser.parseFromString(innerXML, "text/xml");
+    contentDoc = parser.parseFromString(innerXML, "text/xml");
   }
 
   let result = "";
 
-  // 類型
-  const typeNode = xmlDoc.querySelector("類別");
+  // ===== 基本欄位（AT 或 DI 皆可）=====
+  const typeNode = atDoc.querySelector("類別");
   if (typeNode) result += "類型：" + typeNode.textContent.trim() + "\n";
 
-  // 受文者
-  const receiver = xmlDoc.querySelector("受文者 文字, 受文者");
+  const receiver = atDoc.querySelector("受文者 文字, 受文者");
   if (receiver) result += "受文者：" + receiver.textContent.trim() + "\n";
 
-  // 發文日期
-  const dateNode = xmlDoc.querySelector("發文日期 年月日");
+  const dateNode = atDoc.querySelector("發文日期 年月日");
   if (dateNode) result += "發文日期：" + dateNode.textContent.trim() + "\n";
 
-  // 發文字號
-  const noNode = xmlDoc.querySelector("發文字號");
+  const noNode = atDoc.querySelector("發文字號");
   if (noNode) result += "發文字號：" + noNode.textContent.trim() + "\n";
 
-  // 附件
-  const attachNode = xmlDoc.querySelector("附件 文字");
+  const attachNode = atDoc.querySelector("附件 文字");
   if (attachNode) result += "附件：" + attachNode.textContent.trim() + "\n";
 
-  // 主旨
-  const subjectNode = xmlDoc.querySelector("主旨 > 文字");
+  // ===== 內文（來自 DI）=====
+  const subjectNode = contentDoc.querySelector("主旨 > 文字");
   if (subjectNode) {
     result += "\n主旨：\n" + subjectNode.textContent.trim() + "\n";
   }
 
-  // 說明
-  const explainNode = xmlDoc.querySelector('段落[段名="說明："]');
+  const explainNode = contentDoc.querySelector('段落[段名="說明："]');
   if (explainNode) {
     result += "\n說明：\n";
     const items = explainNode.querySelectorAll("條列 > 文字");
@@ -102,18 +108,19 @@ function parseDocument(text) {
     }
   }
 
-  // 擬辦
-  const planNode = xmlDoc.querySelector('段落[段名="擬辦："] > 文字');
+  const planNode = contentDoc.querySelector('段落[段名="擬辦："] > 文字');
   if (planNode) {
     result += "\n擬辦：\n" + planNode.textContent.trim() + "\n";
   }
 
-  // 會辦單位
-  const coopNode = xmlDoc.querySelector("會辦單位");
-  if (coopNode) result += "\n會辦單位：" + coopNode.textContent.trim() + "\n";
+  // ===== 會辦單位（只從 AT / Template / 文稿屬性 抓）=====
+  const coopNode = atDoc.querySelector("Template 文稿屬性 > 會辦單位");
+  if (coopNode && coopNode.textContent.trim()) {
+    result += "\n會辦單位：" + coopNode.textContent.trim() + "\n";
+  }
 
-  //  正本（修正）
-  const mainNodes = xmlDoc.querySelectorAll("正本 全銜");
+  // ===== 正副本 =====
+  const mainNodes = atDoc.querySelectorAll("正本 全銜");
   if (mainNodes.length > 0) {
     result += "\n正本：\n";
     mainNodes.forEach((node, i) => {
@@ -121,8 +128,7 @@ function parseDocument(text) {
     });
   }
 
-  //  副本（修正）
-  const copyNodes = xmlDoc.querySelectorAll("副本 全銜");
+  const copyNodes = atDoc.querySelectorAll("副本 全銜");
   if (copyNodes.length > 0) {
     result += "\n副本：\n";
     copyNodes.forEach((node, i) => {
@@ -130,8 +136,10 @@ function parseDocument(text) {
     });
   }
 
-  // 決行層級
-  const levelNode = xmlDoc.querySelector("決行層級值");
+  // ===== 決行層級 =====
+  const levelNode =
+    atDoc.querySelector("決行層級值") ||
+    atDoc.querySelector("AuthorizationLevel");
   if (levelNode) {
     result += "\n決行層級：" + levelNode.textContent.trim() + "\n";
   }
